@@ -64,13 +64,21 @@ class RTStatusIcon (gtk.StatusIcon):
 		self.url = url 
 		self.username = username
 		self.password = password
+		self.ticketItems = {}
 		
 	def on_quit(self, data):
 		sys.exit(1)
 
 	def on_popup_menu(self, status, button, time):
-		for t in self.getTickets():
-			self.menu.add(gtk.MenuItem(t.title))
+		for t, mi in self.ticketItems.items():
+			self.menu.remove(mi)
+	
+		tickets = self.getTickets()
+		for t in reversed(tickets):
+			mi = self.ticketItems[t] = gtk.MenuItem(t.title)
+			self.menu.add(mi)
+			self.menu.reorder_child(mi, 0)
+		
 		self.menu.popup(None, None, None, button, time)
 		self.menu.show_all()
 		
