@@ -9,6 +9,8 @@ import urllib2
 
 import re
 
+import webbrowser
+
 class Ticket:
 	parseRegex = re.compile(r'^(?P<id>\d+): (?P<title>.*)$')
 	
@@ -76,11 +78,17 @@ class RTStatusIcon (gtk.StatusIcon):
 		tickets = self.getTickets()
 		for t in reversed(tickets):
 			mi = self.ticketItems[t] = gtk.MenuItem(t.title)
+			mi.set_data('ticket', t)
+			mi.connect('activate', self.on_activate)
 			self.menu.add(mi)
 			self.menu.reorder_child(mi, 0)
 		
 		self.menu.popup(None, None, None, button, time)
 		self.menu.show_all()
+		
+	def on_activate(self, menuitem):
+		t = menuitem.get_data('ticket')
+		webbrowser.open(self.url+'/Ticket/Display.html?id='+t.id)
 		
 	def on_preferences(self, data):
 		print 'preferences'
