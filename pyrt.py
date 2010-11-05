@@ -86,7 +86,7 @@ class RT:
 		tickets = []
 		try:
 			response = urllib2.urlopen(login)
-			tickets = Ticket.parse(response.read())
+			tickets = list(reversed(Ticket.parse(response.read())))
 			if len(tickets) > query.query['limit']:
 				tickets = tickets[:query.query['limit']]
 		except urllib2.URLError:
@@ -129,14 +129,17 @@ class RTStatusIcon (gtk.StatusIcon):
 		self.menuItems = []
 		self.tickets = []
 		self.queries = [
-			Query('Default', 'Top 10 Highest Priority Tickets I Own', 
+			Query('Default', 'Top 20 Most Recently Updated Tickets I Own', 
 				query = "Owner='__CurrentUser__' AND (Status='new' OR Status='open')",
-				limit = 10,
-				order = 'DESC',
-				orderby = 'Priority')]
+				limit = 20,
+				orderby = 'LastUpdated')]
 		self.query = self.queries[0]
 		self.getTickets()
-		
+		for t in self.tickets:
+			t.seen = True
+			
+		gobject.timeout_add(60*1000, self.refresh)
+			
 	def on_quit(self, data):
 		sys.exit(1)
 
@@ -151,7 +154,16 @@ class RTStatusIcon (gtk.StatusIcon):
 			s = t.Subject
 			if len(s) > 30:
 				s = s[0:30]+'...'
-			mi = gtk.MenuItem(s)
+				
+			if not t.seen:
+				mi = gtk.ImageMenuItem(s)
+				img = gtk.Image()
+				img.set_from_stock(gtk.STOCK_YES, gtk.ICON_SIZE_MENU)
+				mi.set_image(img)
+			else:
+				mi = gtk.MenuItem(s)
+				
+			t.seen = True
 			mi.set_tooltip_markup('''<b>Queue</b>: %s
 <b>Status</b>: %s
 <b>Last Updated</b>: %s''' % (t.Queue, t.Status, t.LastUpdated))
@@ -213,13 +225,20 @@ class RTStatusIcon (gtk.StatusIcon):
 		for t in tickets:
 			for t2 in self.tickets:
 				if t.id == t2.id:
-					t.seen = t2.seen
+					if t2.seen:
+						t.seen = t2.LastUpdated == t.LastUpdated
+					else:
+						t.seen = False
 					
 		self.tickets = tickets
 		
 		for t in tickets:
 			if not t.seen:
 				self.set_blinking(True)
+
+	def refresh(self):
+		self.getTickets()
+		return True
 
 if __name__ == '__main__':
 		icon = RTStatusIcon(*sys.argv[1:])
