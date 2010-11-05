@@ -1,6 +1,7 @@
 #! /usr/bin/python
 
 import gtk
+import gobject
 import sys
 
 import cookielib
@@ -11,12 +12,19 @@ import re
 
 import webbrowser
 
+class View:
+	def __init__(self, name, desc, **query):
+		self.name = name
+		self.desc = desc
+		self.query = query
+
 class Ticket:
 	parseRegex = re.compile(r'^(?P<id>\d+): (?P<title>.*)$')
 	
 	def __init__(self):
 		self.id = None
 		self.title = ''
+		self.seen = False
 		
 	@staticmethod
 	def parse(text):
@@ -66,25 +74,62 @@ class RTStatusIcon (gtk.StatusIcon):
 		self.url = url 
 		self.username = username
 		self.password = password
-		self.ticketItems = {}
+		self.menuItems = []
+		self.tickets = []
+		self.views = [
+			View('Default', 'Top 10 Highest Priority Tickets I Own', 
+				query = "Owner='__CurrentUser__' AND (Status='new' OR Status='open')",
+				orderby = 'Priority')]
+		self.view = self.views[0]
+		self.getTickets()
 		
 	def on_quit(self, data):
 		sys.exit(1)
 
 	def on_popup_menu(self, status, button, time):
-		for t, mi in self.ticketItems.items():
+		for mi in self.menuItems:
 			self.menu.remove(mi)
+		self.menuItems = []
+		
+		i = 0
 	
-		tickets = self.getTickets()
-		for t in reversed(tickets):
-			mi = self.ticketItems[t] = gtk.MenuItem(t.title)
-			mi.set_data('ticket', t)
-			mi.connect('activate', self.on_activate)
-			self.menu.add(mi)
-			self.menu.reorder_child(mi, 0)
+		for t in self.tickets:
+			if i > 9:
+				mi = gtk.MenuItem('More tickets...')
+				mi.set_data('ticket', None)
+				mi.connect('activate', self.on_activate)
+				self.menu.insert(mi, i)
+				self.menuItems.append(mi)
+				i += 1
+				break
+			else:
+				mi = gtk.MenuItem(t.title)
+				mi.set_data('ticket', t)
+				mi.connect('activate', self.on_activate)
+				self.menu.insert(mi, i)
+				self.menuItems.append(mi)
+				i += 1
+
+		mi = gtk.SeparatorMenuItem()
+		self.menu.insert(mi, i)
+		self.menuItems.append(mi)
+		i += 1
+		
+		for v in self.views:
+			mi = gtk.MenuItem(v.name)
+			mi.set_tooltip_text(v.desc)
+			mi.set_data('view', v)
+			self.menu.insert(mi, i)
+			self.menuItems.append(mi)	
+			i += 1
+		
+		mi = gtk.SeparatorMenuItem()
+		self.menu.insert(mi, i)
+		self.menuItems.append(mi)
 		
 		self.menu.popup(None, None, None, button, time)
 		self.menu.show_all()
+		self.set_blinking(False)
 		
 	def on_activate(self, menuitem):
 		t = menuitem.get_data('ticket')
@@ -117,12 +162,10 @@ class RTStatusIcon (gtk.StatusIcon):
 			pass
 		
 		url = self.url + '/REST/1.0/search/ticket/' 
-		data = urllib.urlencode({
-			'user' : self.username,
-			'pass' : self.password,
-			'query' : "Owner='__CurrentUser__' AND (Status='new' OR Status='open')",
-			'orderby' : 'Priority'
-		})
+		data = self.view.query.copy()
+		data['user'] = self.username
+		data['pass'] = self.password
+		data = urllib.urlencode(data)
 		login = urllib2.Request(url, data)
 		tickets = []
 		try:
@@ -131,7 +174,16 @@ class RTStatusIcon (gtk.StatusIcon):
 		except urllib2.URLError:
 			pass
 		
-		return tickets
+		for t in tickets:
+			for t2 in self.tickets:
+				if t.id == t2.id:
+					t.seen = t2.seen
+					
+		self.tickets = tickets
+		
+		for t in tickets:
+			if not t.seen:
+				self.set_blinking(True)
 
 if __name__ == '__main__':
 		icon = RTStatusIcon(*sys.argv[1:])
