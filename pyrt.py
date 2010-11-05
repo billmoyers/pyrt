@@ -19,7 +19,7 @@ class Query:
 		self.query = query
 
 class Ticket:
-	parseRegex = re.compile(r'^(?P<id>\d+): (?P<title>.*)$')
+	parseRegex = re.compile(r'^(?P<key>[^:]+): (?P<value>.*)')
 	
 	def __init__(self):
 		self.id = None
@@ -28,18 +28,32 @@ class Ticket:
 		
 	@staticmethod
 	def parse(text):
-		t = Ticket()
-		m = re.search(Ticket.parseRegex, text)
-		if m != None:
-			gd = m.groupdict()
+		tickets = []
+		t = None
+		for line in text.splitlines():
+			if line == '--':
+				if t != None:
+					tickets.append(t)
+				t = Ticket()
+		
+			else:
+				m = re.search(Ticket.parseRegex, line)
+				if m != None:
+					if t == None: t = Ticket()
+					gd = m.groupdict()
+					k = gd['key']
+					v = gd['value']
+					if k == 'id':
+						v = v.split('/')[1]
+						t.__dict__[k] = v
+					else:
+						t.__dict__[k] = v
+		
+		if t != None:
+			tickets.append(t)
 			
-			t.id = gd['id']
-			t.title = gd['title']
-			return t
-			
-		else:
-			return None
-
+		return tickets
+		
 class RT:
 	def __init__(self, url, username, password):
 		self.url = url
@@ -66,12 +80,13 @@ class RT:
 		data = query.query.copy()
 		data['user'] = self.username
 		data['pass'] = self.password
+		data['format'] = 'l'
 		data = urllib.urlencode(data)
 		login = urllib2.Request(url, data)
 		tickets = []
 		try:
 			response = urllib2.urlopen(login)
-			tickets = [t for t in [Ticket.parse(line) for line in response.read().splitlines()] if t != None]
+			tickets = Ticket.parse(response.read())
 			if len(tickets) > query.query['limit']:
 				tickets = tickets[:query.query['limit']]
 		except urllib2.URLError:
@@ -115,7 +130,6 @@ class RTStatusIcon (gtk.StatusIcon):
 		self.tickets = []
 		self.queries = [
 			Query('Default', 'Top 10 Highest Priority Tickets I Own', 
-				format = 's',
 				query = "Owner='__CurrentUser__' AND (Status='new' OR Status='open')",
 				limit = 10,
 				order = 'DESC',
@@ -134,7 +148,10 @@ class RTStatusIcon (gtk.StatusIcon):
 		i = 0
 	
 		for t in self.tickets:
-			mi = gtk.MenuItem(t.title)
+			mi = gtk.MenuItem(t.Subject)
+			mi.set_tooltip_markup('''<b>Queue</b>: %s
+<b>Status</b>: %s
+<b>Last Updated</b>: %s''' % (t.Queue, t.Status, t.LastUpdated))
 			mi.set_data('ticket', t)
 			mi.connect('activate', self.on_activate)
 			self.menu.insert(mi, i)
@@ -147,9 +164,12 @@ class RTStatusIcon (gtk.StatusIcon):
 		i += 1
 		
 		for v in self.queries:
-			mi = gtk.MenuItem(v.name)
+			mi = gtk.CheckMenuItem(v.name)
+			mi.set_draw_as_radio(True)
 			mi.set_tooltip_text(v.desc)
 			mi.set_data('query', v)
+			if v == self.query:
+				mi.set_active(True)
 			self.menu.insert(mi, i)
 			self.menuItems.append(mi)	
 			i += 1
