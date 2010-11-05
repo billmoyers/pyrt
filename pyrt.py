@@ -12,7 +12,7 @@ import re
 
 import webbrowser
 
-class View:
+class Query:
 	def __init__(self, name, desc, **query):
 		self.name = name
 		self.desc = desc
@@ -39,6 +39,45 @@ class Ticket:
 			
 		else:
 			return None
+
+class RT:
+	def __init__(self, url, username, password):
+		self.url = url
+		self.username = username
+		self.password = password
+		
+	def authenticate(self):
+		cj = cookielib.LWPCookieJar()
+		opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
+		opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+		opener.addheaders = [('Content-type', 'form-data')]
+		urllib2.install_opener(opener)
+		data = {'user' : self.username, 'pass' : self.password}
+		ldata = urllib.urlencode(data)
+		login = urllib2.Request(self.url, ldata)
+		try:
+			response = urllib2.urlopen(login)
+			return True
+		except urllib2.URLError:
+			return False
+		
+	def getTickets(self, query):
+		url = self.url + '/REST/1.0/search/ticket/' 
+		data = query.query.copy()
+		data['user'] = self.username
+		data['pass'] = self.password
+		data = urllib.urlencode(data)
+		login = urllib2.Request(url, data)
+		tickets = []
+		try:
+			response = urllib2.urlopen(login)
+			tickets = [t for t in [Ticket.parse(line) for line in response.read().splitlines()] if t != None]
+			if len(tickets) > query.query['limit']:
+				tickets = tickets[:query.query['limit']]
+		except urllib2.URLError:
+			pass
+		
+		return tickets
 
 class RTStatusIcon (gtk.StatusIcon):
 	def __init__(self, url, username, password):
@@ -71,16 +110,17 @@ class RTStatusIcon (gtk.StatusIcon):
 		self.set_tooltip('Python RequestTracker App')
 		self.set_visible(True)
 		self.connect('popup-menu', self.on_popup_menu)
-		self.url = url 
-		self.username = username
-		self.password = password
+		self.rt = RT(url, username, password)
 		self.menuItems = []
 		self.tickets = []
-		self.views = [
-			View('Default', 'Top 10 Highest Priority Tickets I Own', 
+		self.queries = [
+			Query('Default', 'Top 10 Highest Priority Tickets I Own', 
+				format = 's',
 				query = "Owner='__CurrentUser__' AND (Status='new' OR Status='open')",
+				limit = 10,
+				order = 'DESC',
 				orderby = 'Priority')]
-		self.view = self.views[0]
+		self.query = self.queries[0]
 		self.getTickets()
 		
 	def on_quit(self, data):
@@ -94,31 +134,22 @@ class RTStatusIcon (gtk.StatusIcon):
 		i = 0
 	
 		for t in self.tickets:
-			if i > 9:
-				mi = gtk.MenuItem('More tickets...')
-				mi.set_data('ticket', None)
-				mi.connect('activate', self.on_activate)
-				self.menu.insert(mi, i)
-				self.menuItems.append(mi)
-				i += 1
-				break
-			else:
-				mi = gtk.MenuItem(t.title)
-				mi.set_data('ticket', t)
-				mi.connect('activate', self.on_activate)
-				self.menu.insert(mi, i)
-				self.menuItems.append(mi)
-				i += 1
+			mi = gtk.MenuItem(t.title)
+			mi.set_data('ticket', t)
+			mi.connect('activate', self.on_activate)
+			self.menu.insert(mi, i)
+			self.menuItems.append(mi)
+			i += 1
 
 		mi = gtk.SeparatorMenuItem()
 		self.menu.insert(mi, i)
 		self.menuItems.append(mi)
 		i += 1
 		
-		for v in self.views:
+		for v in self.queries:
 			mi = gtk.MenuItem(v.name)
 			mi.set_tooltip_text(v.desc)
-			mi.set_data('view', v)
+			mi.set_data('query', v)
 			self.menu.insert(mi, i)
 			self.menuItems.append(mi)	
 			i += 1
@@ -133,7 +164,13 @@ class RTStatusIcon (gtk.StatusIcon):
 		
 	def on_activate(self, menuitem):
 		t = menuitem.get_data('ticket')
-		webbrowser.open(self.url+'/Ticket/Display.html?id='+t.id)
+		if t != None:
+			webbrowser.open(self.rt.url+'/Ticket/Display.html?id='+t.id)
+
+		q = menuitem.get_data('query')
+		if q != None:
+			self.query = q
+			self.getTickets()
 		
 	def on_preferences(self, data):
 		print 'preferences'
@@ -141,38 +178,14 @@ class RTStatusIcon (gtk.StatusIcon):
 	def on_about(self, data):
 		dialog = gtk.AboutDialog()
 		dialog.set_name('PyRT')
-		dialog.set_version('0.0.1')
+		dialog.set_version('0.1.0')
 		dialog.set_comments('A Python RequestTracker tray app.')
 		dialog.set_website('')
 		dialog.run()
 		dialog.destroy()
 		
 	def getTickets(self):
-		cj = cookielib.LWPCookieJar()
-		opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
-		opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-		opener.addheaders = [('Content-type', 'form-data')]
-		urllib2.install_opener(opener)
-		data = {'user' : self.username, 'pass' : self.password}
-		ldata = urllib.urlencode(data)
-		login = urllib2.Request(self.url, ldata)
-		try:
-			response = urllib2.urlopen(login)
-		except urllib2.URLError:
-			pass
-		
-		url = self.url + '/REST/1.0/search/ticket/' 
-		data = self.view.query.copy()
-		data['user'] = self.username
-		data['pass'] = self.password
-		data = urllib.urlencode(data)
-		login = urllib2.Request(url, data)
-		tickets = []
-		try:
-			response = urllib2.urlopen(login)
-			tickets = [t for t in [Ticket.parse(line) for line in response.read().splitlines()] if t != None]
-		except urllib2.URLError:
-			pass
+		tickets = self.rt.getTickets(self.query)
 		
 		for t in tickets:
 			for t2 in self.tickets:
