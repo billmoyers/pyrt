@@ -148,7 +148,10 @@ class RTStatusIcon (gtk.StatusIcon):
 		i = 0
 	
 		for t in self.tickets:
-			mi = gtk.MenuItem(t.Subject)
+			s = t.Subject
+			if len(s) > 30:
+				s = s[0:30]+'...'
+			mi = gtk.MenuItem(s)
 			mi.set_tooltip_markup('''<b>Queue</b>: %s
 <b>Status</b>: %s
 <b>Last Updated</b>: %s''' % (t.Queue, t.Status, t.LastUpdated))
@@ -178,8 +181,8 @@ class RTStatusIcon (gtk.StatusIcon):
 		self.menu.insert(mi, i)
 		self.menuItems.append(mi)
 		
-		self.menu.popup(None, None, None, button, time)
 		self.menu.show_all()
+		self.menu.popup(None, None, None, button, time)
 		self.set_blinking(False)
 		
 	def on_activate(self, menuitem):
