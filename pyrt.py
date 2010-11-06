@@ -3,14 +3,12 @@
 import gtk
 import gobject
 import sys
-
 import cookielib
 import urllib
 import urllib2
-
 import re
-
 import webbrowser
+import threading
 
 class Query:
 	def __init__(self, name, desc, **query):
@@ -122,7 +120,7 @@ class RTStatusIcon (gtk.StatusIcon):
 		self.manager.insert_action_group(ag, 0)
 		self.manager.add_ui_from_string(menu)
 		self.menu = self.manager.get_widget('/Menubar/Menu/About').props.parent
-		self.set_tooltip('Python RequestTracker App')
+		self.set_tooltip('RequestTracker')
 		self.set_visible(True)
 		self.connect('popup-menu', self.on_popup_menu)
 		self.rt = RT(url, username, password)
@@ -133,12 +131,19 @@ class RTStatusIcon (gtk.StatusIcon):
 				query = "Owner='__CurrentUser__' AND (Status='new' OR Status='open')",
 				limit = 20,
 				orderby = 'LastUpdated')]
+		self.poppedUp = False
 		self.query = self.queries[0]
 		self.getTickets()
 		for t in self.tickets:
 			t.seen = True
-			
-		gobject.timeout_add(60*1000, self.refresh)
+		self.set_blinking(False)
+
+		self.lock = threading.Lock()			
+		self.thread = threading.Thread(
+			target = lambda : gobject.timeout_add(15*1000, self.refresh),
+			group = None)
+		self.thread.setDaemon(True)
+		self.thread.start()
 			
 	def on_quit(self, data):
 		sys.exit(1)
@@ -196,6 +201,7 @@ class RTStatusIcon (gtk.StatusIcon):
 		self.menu.show_all()
 		self.menu.popup(None, None, None, button, time)
 		self.set_blinking(False)
+		self.poppedUp = True
 		
 	def on_activate(self, menuitem):
 		t = menuitem.get_data('ticket')
@@ -221,6 +227,8 @@ class RTStatusIcon (gtk.StatusIcon):
 		
 	def getTickets(self):
 		tickets = self.rt.getTickets(self.query)
+		if len(self.tickets) > 0:
+			tickets[0].LastUpdated = 'anf'
 		
 		for t in tickets:
 			for t2 in self.tickets:
@@ -230,16 +238,28 @@ class RTStatusIcon (gtk.StatusIcon):
 					else:
 						t.seen = False
 					
-		self.tickets = tickets
-		
 		for t in tickets:
 			if not t.seen:
 				self.set_blinking(True)
+				break
+		
+		if len(self.tickets) == 0 or not self.get_blinking():
+			self.set_tooltip('%s ticket(s) in %s query.' % (len(tickets), self.query.name))
+		else:
+			self.set_tooltip('%s/%s updated ticket(s) in %s query.' % 
+				(len([t for t in tickets if not t.seen]), len(tickets), self.query.name))
+
+		self.tickets = tickets
 
 	def refresh(self):
+		self.lock.acquire()
 		self.getTickets()
+		self.lock.release()
 		return True
+		
+	def close(self):
+		pass
 
 if __name__ == '__main__':
-		icon = RTStatusIcon(*sys.argv[1:])
-		gtk.main()
+	icon = RTStatusIcon(*sys.argv[1:])
+	gtk.main()
