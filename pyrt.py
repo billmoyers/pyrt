@@ -140,7 +140,7 @@ class RTStatusIcon (gtk.StatusIcon):
 
 		self.lock = threading.Lock()			
 		self.thread = threading.Thread(
-			target = lambda : gobject.timeout_add(15*1000, self.refresh),
+			target = lambda : gobject.timeout_add(60*1000, self.refresh),
 			group = None)
 		self.thread.setDaemon(True)
 		self.thread.start()
