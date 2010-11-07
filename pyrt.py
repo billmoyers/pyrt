@@ -3,94 +3,10 @@
 import gtk
 import gobject
 import sys
-import cookielib
-import urllib
-import urllib2
-import re
 import webbrowser
 import threading
 
-class Query:
-	def __init__(self, name, desc, **query):
-		self.name = name
-		self.desc = desc
-		self.query = query
-
-class Ticket:
-	parseRegex = re.compile(r'^(?P<key>[^:]+): (?P<value>.*)')
-	
-	def __init__(self):
-		self.id = None
-		self.title = ''
-		self.seen = False
-		
-	@staticmethod
-	def parse(text):
-		tickets = []
-		t = None
-		for line in text.splitlines():
-			if line == '--':
-				if t != None:
-					tickets.append(t)
-				t = Ticket()
-		
-			else:
-				m = re.search(Ticket.parseRegex, line)
-				if m != None:
-					if t == None: t = Ticket()
-					gd = m.groupdict()
-					k = gd['key']
-					v = gd['value']
-					if k == 'id':
-						v = v.split('/')[1]
-						t.__dict__[k] = v
-					else:
-						t.__dict__[k] = v
-		
-		if t != None:
-			tickets.append(t)
-			
-		return tickets
-		
-class RT:
-	def __init__(self, url, username, password):
-		self.url = url
-		self.username = username
-		self.password = password
-		
-	def authenticate(self):
-		cj = cookielib.LWPCookieJar()
-		opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
-		opener.addheaders = [('User-agent', 'Mozilla/5.0')]
-		opener.addheaders = [('Content-type', 'form-data')]
-		urllib2.install_opener(opener)
-		data = {'user' : self.username, 'pass' : self.password}
-		ldata = urllib.urlencode(data)
-		login = urllib2.Request(self.url, ldata)
-		try:
-			response = urllib2.urlopen(login)
-			return True
-		except urllib2.URLError:
-			return False
-		
-	def getTickets(self, query):
-		url = self.url + '/REST/1.0/search/ticket/' 
-		data = query.query.copy()
-		data['user'] = self.username
-		data['pass'] = self.password
-		data['format'] = 'l'
-		data = urllib.urlencode(data)
-		login = urllib2.Request(url, data)
-		tickets = []
-		try:
-			response = urllib2.urlopen(login)
-			tickets = list(reversed(Ticket.parse(response.read())))
-			if len(tickets) > query.query['limit']:
-				tickets = tickets[:query.query['limit']]
-		except urllib2.URLError:
-			pass
-		
-		return tickets
+from rt import RT, Query, Ticket
 
 class RTStatusIcon (gtk.StatusIcon):
 	def __init__(self, url, username, password):
@@ -112,7 +28,7 @@ class RTStatusIcon (gtk.StatusIcon):
 			('Menu',  gtk.STOCK_PREFERENCES, 'Menu'),
 			('Preferences', gtk.STOCK_PREFERENCES, '_Preferences...', None, 'Change PyRT settings.', self.on_preferences),
 			('About', gtk.STOCK_ABOUT, '_About...', None, 'About PyRT', self.on_about),
-			('Quit', gtk.STOCK_QUIT, '_Quit', None, 'Quit.', self.on_quit)
+			('Quit', gtk.STOCK_QUIT, '_Quit', None, 'Quit', self.on_quit)
 		]
 		ag = gtk.ActionGroup('Actions')
 		ag.add_actions(actions)
@@ -226,10 +142,14 @@ class RTStatusIcon (gtk.StatusIcon):
 		dialog.destroy()
 		
 	def getTickets(self):
-		tickets = self.rt.getTickets(self.query)
-		if len(self.tickets) > 0:
-			tickets[0].LastUpdated = 'anf'
-		
+	 	try:
+			tickets = self.rt.getTickets(self.query)
+		except Exception, ex:
+		 	tickets = []
+			self.set_tooltip(str(ex))
+			self.set_blinking(True);
+			return
+		 	
 		for t in tickets:
 			for t2 in self.tickets:
 				if t.id == t2.id:
