@@ -5,6 +5,7 @@ import gobject
 import sys
 import webbrowser
 import threading
+import pango
 
 from rt import RT, Query, Ticket
 
@@ -76,13 +77,10 @@ class RTStatusIcon (gtk.StatusIcon):
 			if len(s) > 30:
 				s = s[0:30]+'...'
 				
+			mi = gtk.MenuItem(s)
 			if not t.seen:
-				mi = gtk.ImageMenuItem(s)
-				img = gtk.Image()
-				img.set_from_stock(gtk.STOCK_YES, gtk.ICON_SIZE_MENU)
-				mi.set_image(img)
-			else:
-				mi = gtk.MenuItem(s)
+				mi.get_children()[0].modify_font(
+					pango.FontDescription("bold"))
 				
 			t.seen = True
 			mi.set_tooltip_markup('''<b>Queue</b>: %s
@@ -149,7 +147,7 @@ class RTStatusIcon (gtk.StatusIcon):
 			self.set_tooltip(str(ex))
 			self.set_blinking(True);
 			return
-		 	
+		
 		for t in tickets:
 			for t2 in self.tickets:
 				if t.id == t2.id:

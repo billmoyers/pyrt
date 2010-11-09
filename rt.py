@@ -50,6 +50,7 @@ class RT:
 		self.url = url
 		self.username = username
 		self.password = password
+		self.cj = None
 		
 	def authenticate(self):
 		self.cj = cookielib.LWPCookieJar()
@@ -58,29 +59,27 @@ class RT:
 		data = {'user' : self.username, 'pass' : self.password}
 		ldata = urllib.urlencode(data)
 		login = urllib2.Request(self.url, ldata)
-		try:
-			response = urllib2.urlopen(login)
-			return True
-		except urllib2.URLError:
-			return False
+		response = urllib2.urlopen(login)
+		return True
 		
 	def getTickets(self, query):
+	 	if self.cj == None:
+			self.authenticate()
+			
 		url = self.url + '/REST/1.0/search/ticket/' 
 		data = query.query.copy()
 		opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cj))
 		urllib2.install_opener(opener)
-		#data['user'] = self.username
-		#data['pass'] = self.password
+		data['user'] = self.username
+		data['pass'] = self.password
 		data['format'] = 'l'
 		data = urllib.urlencode(data)
 		login = urllib2.Request(url, data)
+		
 		tickets = []
-		try:
-			response = urllib2.urlopen(login)
-			tickets = list(reversed(Ticket.parse(response.read())))
-			if len(tickets) > query.query['limit']:
-				tickets = tickets[:query.query['limit']]
-		except urllib2.URLError:
-			pass
+		response = urllib2.urlopen(login)
+		tickets = list(reversed(Ticket.parse(response.read())))
+		if len(tickets) > query.query['limit']:
+			tickets = tickets[:query.query['limit']]
 		
 		return tickets
